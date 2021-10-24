@@ -46,6 +46,7 @@ slider_marks = {i:str(i) for i  in range(2,11,2)}
 # slider_marks.update({i:"" for i in range(3,10,2)})
 
 app = Dash(__name__, external_stylesheets=[dbc.themes.CYBORG])
+app.title = "NFL Targets"
 
 server = app.server
 
