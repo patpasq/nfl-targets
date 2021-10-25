@@ -24,6 +24,8 @@ df['season'] = df.season.astype('category')
 for k, v in cols_i_want.items():
     df[k] = df[k].astype(v)
 
+df['week'] = df.week.cat.as_ordered()
+
 # remove nan rows
 df = df.loc[df.posteam.notna()]
 
@@ -117,6 +119,9 @@ def update_figure(selected_team, num_receivers, normalize):
             "receiver_player_name":"Player",
             "week":"Week",
             "targets":"Target Share" if normalize else "Targets"
+        },
+        category_orders={
+            'week':[str(i) for i in range(1,players.week.max()+1)]
         },
         template='plotly_dark'
     )
