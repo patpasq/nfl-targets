@@ -8,16 +8,18 @@ import nfl_data_py as nfl
 
 # the columns from the nfl pbp data we will use and their dtypes
 cols_i_want = {
+    'season':'category',
     'week':'category',
-    'posteam':'category',
-    'pass_attempt':'bool',
-    'complete_pass':'bool',
-    'receiver_player_name':'category',
+    'player_name':'category',
+    'recent_team':'category',
+    'targets':'int',
+    'receptions':'int',
+    'target_share':'float'
 }
 
 # pull the columns for the 2021 season
 # since we're going to do our own dtype conversion, dont bother downcasting floats
-df = nfl.import_pbp_data([2021], columns=list(cols_i_want), downcast=False)
+df = nfl.import_weekly_data([2021], columns=list(cols_i_want), downcast=False)
 
 # dtype conversions to reduce memory footprint
 df['season'] = df.season.astype('category')
@@ -26,22 +28,15 @@ for k, v in cols_i_want.items():
 
 df['week'] = df.week.cat.as_ordered()
 
-# remove nan rows
-df = df.loc[df.posteam.notna()]
+# subset to >0 targets
+df = df.loc[df.targets > 0]
 
-# subset to only pass attempts
-df = df.loc[df.pass_attempt].reset_index(drop=True)
+df.rename({"recent_team":"team"}, axis=1, inplace=True)
 
-# group by team, receiver, week
-df = df.groupby(['week','posteam','receiver_player_name'], observed=True)
-df = df['week'].count()
-df.name = 'targets'
-df = df.reset_index()
-
-player_rks = df.groupby(['posteam','receiver_player_name'], observed=True)
+player_rks = df.groupby(['team','player_name'], observed=True)
 player_rks = player_rks['targets'].sum().reset_index()
 player_rks['nfl_rank'] = player_rks.targets.rank(method='min',ascending=False).astype('int16')
-player_rks['team_rank'] = player_rks.groupby('posteam')['targets'].rank(method='min',ascending=False).astype('int16')
+player_rks['team_rank'] = player_rks.groupby('team')['targets'].rank(method='min',ascending=False).astype('int16')
 player_rks.rename({"targets":"season_targets"}, axis=1, inplace=True)
 
 slider_marks = {i:str(i) for i  in range(2,11,2)}
@@ -60,7 +55,7 @@ app.layout = html.Div([
         children = [
             html.H6('Select a team:'),
             dcc.Dropdown(
-                    options=[dict(label=tm, value=tm) for tm in (sorted(df.posteam.unique()))],
+                    options=[dict(label=tm, value=tm) for tm in (sorted(df.team.unique()))],
                     value='CAR',
                     className='dbc_dark',
                     id='team-dropdown'
@@ -105,20 +100,22 @@ app.layout = html.Div([
     Input('normalize', 'value'))
 def update_figure(selected_team, num_receivers, normalize):
     players = player_rks.loc[
-        (player_rks['posteam'] == selected_team)
+        (player_rks['team'] == selected_team)
         &
         (player_rks['team_rank'] <= num_receivers)
     ]
 
     players = players.merge(df)
 
-    fig = px.area(players, x='week', y='targets', 
-        color='receiver_player_name', hover_data=['targets'],
-        groupnorm="percent" if normalize else None,
+    fig = px.area(players, x='week', 
+        y='target_share' if normalize else 'targets', 
+        color='player_name', hover_data=['targets'],
+        # groupnorm="percent" if normalize else None,
         labels={
-            "receiver_player_name":"Player",
+            "player_name":"Player",
             "week":"Week",
-            "targets":"Target Share" if normalize else "Targets"
+            "targets":"Targets",
+            "target_share":"Target Share"
         },
         category_orders={
             'week':[str(i) for i in range(1,players.week.max()+1)]
@@ -127,7 +124,8 @@ def update_figure(selected_team, num_receivers, normalize):
     )
     fig.update_xaxes(type="category")
     if normalize:
-        fig.update_yaxes(ticksuffix="%")
+        fig.update_yaxes(tickformat=',.0%')
+
     fig.update_layout(
         {"plot_bgcolor": "rgba(0, 0, 0, 0)", "paper_bgcolor": "rgba(0, 0, 0, 0)"}
     )
